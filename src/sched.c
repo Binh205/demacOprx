@@ -56,16 +56,28 @@ void init_scheduler(void) {
  *  We implement stateful here using transition technique
  *  State representation   prio = 0 .. MAX_PRIO, curr_slot = 0..(MAX_PRIO - prio)
  */
+static int current_prio = 0;
 struct pcb_t * get_mlq_proc(void) {
 	struct pcb_t * proc = NULL;
 
 	pthread_mutex_lock(&queue_lock);
-	/*TODO: get a process from PRIORITY [ready_queue].
-	 *      It worth to protect by a mechanism.
-	 * */
-
+    int count = 0;
+    while (count < MAX_PRIO) {
+        if (!empty(&mlq_ready_queue[current_prio]) && slot[current_prio] > 0) {
+            proc = dequeue(&mlq_ready_queue[current_prio]);
+            slot[current_prio]--;
+            break;
+        } else {
+            if (slot[current_prio] <= 0 || empty(&mlq_ready_queue[current_prio])) {
+                slot[current_prio] = MAX_PRIO - current_prio; // Reset lại slot cho queue đó
+            }
+            current_prio = (current_prio + 1) % MAX_PRIO;
+        }
+        count++;
+    }
 	if (proc != NULL)
 		enqueue(&running_list, proc);
+		pthread_mutex_unlock(&queue_lock);
 	return proc;	
 }
 
@@ -80,6 +92,7 @@ void put_mlq_proc(struct pcb_t * proc) {
 	 */
 
 	pthread_mutex_lock(&queue_lock);
+	purgequeue(&running_list, proc);//
 	enqueue(&mlq_ready_queue[proc->prio], proc);
 	pthread_mutex_unlock(&queue_lock);
 }
@@ -115,11 +128,7 @@ struct pcb_t * get_proc(void) {
 	struct pcb_t * proc = NULL;
 
 	pthread_mutex_lock(&queue_lock);
-	/*TODO: get a process from [ready_queue].
-	 *       It worth to protect by a mechanism.
-	 * 
-	 */
-
+	proc = dequeue(&ready_queue);
 	pthread_mutex_unlock(&queue_lock);
 
 	return proc;
@@ -135,6 +144,7 @@ void put_proc(struct pcb_t * proc) {
 	 */
 
 	pthread_mutex_lock(&queue_lock);
+	purgequeue(&running_list, proc);//
 	enqueue(&run_queue, proc);
 	pthread_mutex_unlock(&queue_lock);
 }
@@ -151,6 +161,9 @@ void add_proc(struct pcb_t * proc) {
 	pthread_mutex_lock(&queue_lock);
 	enqueue(&ready_queue, proc);
 	pthread_mutex_unlock(&queue_lock);	
+}
+void finish_scheduler(void) {
+    pthread_mutex_destroy(&queue_lock);
 }
 #endif
 
